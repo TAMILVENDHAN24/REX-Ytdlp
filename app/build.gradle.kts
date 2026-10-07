@@ -50,8 +50,8 @@ android {
         applicationId = "xyz.mpv.rex.addon.ytdl"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 4
+        versionName = "1.2.0"
 
     }
 
