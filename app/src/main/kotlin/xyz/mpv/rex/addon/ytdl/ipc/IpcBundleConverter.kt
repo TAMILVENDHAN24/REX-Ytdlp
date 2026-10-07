@@ -11,7 +11,7 @@ import xyz.mpv.rex.addon.ytdl.model.YtdlpInstallationInfo
 import xyz.mpv.rex.addon.ytdl.model.YtdlpReleaseChannel
 
 object IpcBundleConverter {
-    const val INTERFACE_VERSION = 1
+    const val INTERFACE_VERSION = 2
 
     // Status Keys
     const val KEY_IS_INSTALLED = "is_installed"
@@ -41,6 +41,7 @@ object IpcBundleConverter {
     const val KEY_HTTP_HEADERS = "http_headers" // Bundle of String -> String
     const val KEY_SUBTITLES = "subtitles"       // Bundle of String -> String
     const val KEY_VIDEO_QUALITIES_JSON = "video_qualities_json"
+    const val KEY_AUDIO_TRACKS_JSON = "audio_tracks_json"
     const val KEY_ERROR_MESSAGE = "error_message"
 
     // Playlist Result Keys
@@ -86,6 +87,21 @@ object IpcBundleConverter {
         val subsBundle = Bundle()
         result.subtitles.forEach { (k, v) -> subsBundle.putString(k, v) }
         putBundle(KEY_SUBTITLES, subsBundle)
+
+        if (result.audioTracks.isNotEmpty()) {
+            val audioArray = JSONArray()
+            for (t in result.audioTracks) {
+                val obj = JSONObject().apply {
+                    put("url", t.url)
+                    put("lang", t.lang)
+                    put("codec", t.codec)
+                    put("bitrate", t.bitrate)
+                    put("label", t.label)
+                }
+                audioArray.put(obj)
+            }
+            putString(KEY_AUDIO_TRACKS_JSON, audioArray.toString())
+        }
 
         if (result.availableQualities.isNotEmpty()) {
             val jsonArray = JSONArray()

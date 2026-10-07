@@ -17,6 +17,7 @@ import org.json.JSONObject
 import xyz.mpv.rex.addon.ytdl.model.ExtractionOptions
 import xyz.mpv.rex.addon.ytdl.model.PlaylistEntry
 import xyz.mpv.rex.addon.ytdl.model.PlaylistResult
+import xyz.mpv.rex.addon.ytdl.model.AudioTrackRef
 import xyz.mpv.rex.addon.ytdl.model.StreamResolutionResult
 import xyz.mpv.rex.addon.ytdl.model.VideoQuality
 import xyz.mpv.rex.addon.ytdl.model.YtdlpInstallationInfo
@@ -343,11 +344,13 @@ object YtdlpManager {
             }
 
             val availableQualities = extractAvailableQualities(root, videoUrl, audioUrl)
+            val audioTracks = extractAudioTracks(root, audioUrl)
 
             StreamResolutionResult(
                 isSuccess = true,
                 videoUrl = videoUrl,
                 audioUrl = audioUrl,
+                audioTracks = audioTracks,
                 title = title,
                 durationSeconds = duration,
                 thumbnailUrl = thumbnail,
@@ -680,6 +683,49 @@ object YtdlpManager {
         }
 
         return resultQualities
+    }
+
+    /**
+     * Collects every audio-only format as a selectable alternate track,
+     * excluding the primary audio already chosen for the EDL merge.
+     * Deduped by URL. Returns empty when only the primary audio exists.
+     */
+    private fun extractAudioTracks(root: JSONObject, primaryAudioUrl: String?): List<AudioTrackRef> {
+        val formatsJson = root.optJSONArray("formats") ?: return emptyList()
+        val seen = HashSet<String>()
+        val result = ArrayList<AudioTrackRef>()
+
+        for (i in 0 until formatsJson.length()) {
+            val f = formatsJson.optJSONObject(i) ?: continue
+            val vcodec = f.optionalString("vcodec")
+            if (vcodec != null && vcodec != "none") continue // video or muxed
+            val acodec = f.optionalString("acodec") ?: continue
+            if (acodec == "none") continue
+            val url = f.optionalString("url") ?: continue
+            if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) continue
+            if (primaryAudioUrl != null && url == primaryAudioUrl) continue
+            if (!seen.add(url)) continue
+
+            val abr = f.optDouble("abr", f.optDouble("tbr", 0.0))
+            val lang = f.optionalString("language")
+                ?: f.optionalString("lang")
+                ?: f.optJSONObject("http_headers")?.optionalString("X-Language")
+            val formatId = f.optionalString("format_id")
+            val label = listOfNotNull(lang, acodec, formatId).joinToString(" • ").ifBlank { "Audio" }
+
+            result.add(
+                AudioTrackRef(
+                    url = url,
+                    lang = lang,
+                    codec = acodec,
+                    bitrate = (abr * 1000).toLong(),
+                    label = label,
+                )
+            )
+        }
+
+        result.sortWith(compareByDescending<AudioTrackRef> { it.bitrate })
+        return result
     }
 
     private fun parseHeight(text: String?): Int? {
