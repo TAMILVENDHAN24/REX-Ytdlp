@@ -686,14 +686,38 @@ object YtdlpManager {
     }
 
     /**
-     * Collects every audio-only format as a selectable alternate track,
-     * excluding the primary audio already chosen for the EDL merge.
-     * Deduped by URL. Returns empty when only the primary audio exists.
+     * Collects one alternate audio track per distinct language, excluding the
+     * primary audio already chosen for the EDL merge.
+     *
+     * yt-dlp exposes every audio rendition of a video as a separate audio-only
+     * format (e.g. opus 50k/70k/130k plus aac 128k for a single language). Treating
+     * each as its own selectable track made the player attach a dozen extra HTTP
+     * streams on load — the source of the bandwidth spike — and destabilised track
+     * ids. We therefore group by language and keep only the highest-bitrate
+     * rendition of each language, which is what a "multi-audio" selector needs.
+     *
+     * Returns empty when the video has only the primary audio language.
      */
     private fun extractAudioTracks(root: JSONObject, primaryAudioUrl: String?): List<AudioTrackRef> {
         val formatsJson = root.optJSONArray("formats") ?: return emptyList()
-        val seen = HashSet<String>()
-        val result = ArrayList<AudioTrackRef>()
+
+        // Primary audio's own language is already playing, so it must not be
+        // offered as a duplicate alternate track.
+        val primaryLangNorm = primaryAudioUrl?.let { primaryUrl ->
+            var found: String? = null
+            for (i in 0 until formatsJson.length()) {
+                val f = formatsJson.optJSONObject(i) ?: continue
+                if (primaryUrl == f.optionalString("url")) {
+                    found = normalizeAudioLang(f)
+                    break
+                }
+            }
+            found
+        }
+
+        // Best rendition per language key.
+        val bestPerLang = LinkedHashMap<String, AudioTrackRef>()
+        val seenUrls = HashSet<String>()
 
         for (i in 0 until formatsJson.length()) {
             val f = formatsJson.optJSONObject(i) ?: continue
@@ -704,28 +728,52 @@ object YtdlpManager {
             val url = f.optionalString("url") ?: continue
             if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) continue
             if (primaryAudioUrl != null && url == primaryAudioUrl) continue
-            if (!seen.add(url)) continue
+            if (!seenUrls.add(url)) continue
+
+            val lang = audioLang(f)
+            val langNorm = lang?.lowercase()?.trim()
+            if (langNorm != null && langNorm == primaryLangNorm) continue
+
+            // Group by language. When yt-dlp reports no language, the renditions are
+            // virtually always codec/bitrate variants of the same track, so collapse
+            // them under a single key too — this is what keeps the player from
+            // attaching (and downloading) a dozen streams for one video.
+            val key = langNorm ?: "\u0000no-lang"
 
             val abr = f.optDouble("abr", f.optDouble("tbr", 0.0))
-            val lang = f.optionalString("language")
-                ?: f.optionalString("lang")
-                ?: f.optJSONObject("http_headers")?.optionalString("X-Language")
-            val formatId = f.optionalString("format_id")
-            val label = listOfNotNull(lang, acodec, formatId).joinToString(" • ").ifBlank { "Audio" }
-
-            result.add(
-                AudioTrackRef(
-                    url = url,
-                    lang = lang,
-                    codec = acodec,
-                    bitrate = (abr * 1000).toLong(),
-                    label = label,
-                )
+            val candidate = AudioTrackRef(
+                url = url,
+                lang = lang,
+                codec = acodec,
+                bitrate = (abr * 1000).toLong(),
+                label = buildAudioLabel(lang, acodec, f.optionalString("format_id"), abr),
             )
+
+            val existing = bestPerLang[key]
+            if (existing == null || candidate.bitrate > existing.bitrate) {
+                bestPerLang[key] = candidate
+            }
         }
 
-        result.sortWith(compareByDescending<AudioTrackRef> { it.bitrate })
-        return result
+        return bestPerLang.values.sortedWith(compareByDescending<AudioTrackRef> { it.bitrate })
+    }
+
+    private fun audioLang(f: JSONObject): String? =
+        f.optionalString("language")
+            ?: f.optionalString("lang")
+            ?: f.optionalString("format_note")?.takeIf { it.length <= 12 && !it.any(Char::isDigit) }
+            ?: f.optJSONObject("http_headers")?.optionalString("X-Language")
+
+    private fun normalizeAudioLang(f: JSONObject): String? =
+        audioLang(f)?.lowercase()?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun buildAudioLabel(lang: String?, acodec: String?, formatId: String?, abr: Double): String {
+        val quality = when {
+            abr >= 1 -> "${abr.toInt()}kbps"
+            abr > 0 && acodec != null && acodec.contains("opus", ignoreCase = true) -> "opus"
+            else -> null
+        }
+        return listOfNotNull(lang, acodec, quality ?: formatId).joinToString(" • ").ifBlank { "Audio" }
     }
 
     private fun parseHeight(text: String?): Int? {
