@@ -116,6 +116,8 @@ chaquopy {
         getByName("arm64") {
             version = "3.13"
             pip {
+                options("--extra-index-url", "https://pypi.flet.dev")
+                install("cffi==2.1.1")
                 install("curl-cffi==0.16.3")
             }
         }
@@ -132,4 +134,3 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
 }
-
