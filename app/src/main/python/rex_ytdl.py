@@ -133,6 +133,24 @@ def _get_ydl_opts(args):
 
     return ydl_opts if isinstance(ydl_opts, dict) else {}
 
+def get_impersonation_status(ytdl_path):
+    """Report whether the embedded runtime can load yt-dlp's curl-cffi handler."""
+    _prepare_environment(ytdl_path)
+    try:
+        import curl_cffi
+        from yt_dlp.networking._curlcffi import CurlCFFIRH
+
+        return json.dumps({
+            "available": True,
+            "curl_cffi_version": curl_cffi.__version__,
+            "targets": [str(target) for target in CurlCFFIRH.supported_targets],
+        }, separators=(",", ":"))
+    except Exception as e:
+        return json.dumps({
+            "available": False,
+            "error": str(e),
+        }, separators=(",", ":"))
+
 def extract_media(ytdl_path, quickjs_path, url, cli_args_json, cert_file=None):
     """
     Extracts stream or playlist metadata using yt_dlp in-process via Chaquopy.
@@ -162,4 +180,5 @@ def extract_media(ytdl_path, quickjs_path, url, cli_args_json, cert_file=None):
             return None
         sanitized = ydl.sanitize_info(info)
         return json.dumps(sanitized)
+
 

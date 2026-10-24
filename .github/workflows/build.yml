@@ -28,13 +28,14 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Set up Python 3.11 (for Chaquopy build)
+      - name: Set up Python 3.13 (for arm64 Chaquopy packages)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.13'
 
       - name: Grant Execute Permission to Gradlew
         run: chmod +x gradlew
 
       - name: Compile Debug APK
         run: ./gradlew assembleDebug --stacktrace
+

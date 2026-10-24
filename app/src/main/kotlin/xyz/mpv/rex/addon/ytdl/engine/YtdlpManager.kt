@@ -25,6 +25,7 @@ import xyz.mpv.rex.addon.ytdl.model.YtdlpReleaseChannel
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
 object YtdlpManager {
     private const val TAG = "YtdlpManager"
@@ -34,6 +35,7 @@ object YtdlpManager {
     private const val MAX_IMPORTED_PLAYLIST_ENTRIES = 5_000
 
     private val installMutex = Mutex()
+    private val impersonationStatusLogged = AtomicBoolean(false)
     private val _installationInfo = MutableStateFlow<YtdlpInstallationInfo?>(null)
     val installationInfo: StateFlow<YtdlpInstallationInfo?> = _installationInfo.asStateFlow()
 
@@ -155,6 +157,10 @@ object YtdlpManager {
 
                 val py = ensurePython(context)
                 val rexYtdl = py.getModule("rex_ytdl")
+                if (impersonationStatusLogged.compareAndSet(false, true)) {
+                    val status = rexYtdl.callAttr("get_impersonation_status", ytdlFile.absolutePath)
+                    Log.i(TAG, "yt-dlp impersonation support: $status")
+                }
                 val cliArgsJson = JSONArray(cliArgs).toString()
 
                 val jsonOutput = rexYtdl.callAttr(
@@ -787,3 +793,4 @@ object YtdlpManager {
             .trim()
             .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 }
+

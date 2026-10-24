@@ -50,8 +50,8 @@ android {
         applicationId = "xyz.mpv.rex.addon.ytdl"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.2.0"
+        versionCode = 5
+        versionName = "1.2.1"
 
     }
 
@@ -111,6 +111,15 @@ chaquopy {
     defaultConfig {
         version = "3.11"
     }
+    // curl-cffi's Android wheel is arm64-only, and Python 3.13 drops 32-bit ABIs.
+    productFlavors {
+        getByName("arm64") {
+            version = "3.13"
+            pip {
+                install("curl-cffi==0.16.3")
+            }
+        }
+    }
 }
 
 kotlin {
@@ -123,3 +132,4 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
 }
+
